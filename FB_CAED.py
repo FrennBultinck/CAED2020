@@ -11,6 +11,8 @@ Created on Tue Aug 10 19:43:32 2021
 
 #PCA: https://www.youtube.com/watch?v=Lsue2gEM9D0
 
+#Principal component regression: https://www.statology.org/principal-components-regression-in-python/
+
 ################ IMPORT AND CLEAN ################
 
 
@@ -100,7 +102,7 @@ df.head(10)
 
 
 
-##### b. split the data in testing_data and training_data
+##### b. split the data in testing_data and training_data (first split!)
 
 
 
@@ -242,10 +244,6 @@ plt.axis('equal');
 
 #%%%
 
-
-#sns.pairplot(training_data)
-#%%
-
 ################ MODEL BUILDING ################
 
 
@@ -267,7 +265,7 @@ train_Y.shape
 
 
 
-#Split the data in training and validating sets
+#Split the data in training and validating sets (2nd split)
 X_train, X_test, Y_train, Y_test = train_test_split(train_X, train_Y, test_size=0.25, random_state=0)
 ''' test_size=0.25: we split the dataset in 2 parts (training set, test set) and the ratio
 of the test set compared to the dataset is 0.25 (38 to 150)
@@ -386,8 +384,102 @@ sns.scatterplot(Y_test, Y_pred, alpha = 0.5) #translucent dots (to see if dots a
 plt.figure(figsize=(10,7))
 feat_importances = pd.Series(model_RFR.feature_importances_, index = train_X.columns)
 print(feat_importances)
+'''
 
 
+
+#%% Principal component Regression 
+#https://www.statology.org/principal-components-regression-in-python/
+
+
+
+
+
+#define predictor and response variables
+training_data
+#only leave gender, age, mood_diff and STAI_pre in the train_X data
+X = training_data.drop(columns=['moral_judgment'])
+#only leave target 'moral judgment' in the train_Y data
+y = training_data['moral_judgment']
+X.shape
+y.shape
+
+#scale predictor variables
+#pca.fit_transform(scale(X)):#This tells Python that each of the predictor variables should be scaled to have a mean of 0 and a standard deviation of 1. This ensures that no predictor variable is overly influential in the model if it happens to be measured in different units.
+pca = PCA()
+X_reduced = pca.fit_transform(scale(X))
+
+#define cross validation method
+#RepeatedKFold: This tells Python to use k-fold cross-validation to evaluate the performance of the model. For this example we choose k = 10 folds, repeated 3 times.
+cv = RepeatedKFold(n_splits=10, n_repeats=3, random_state=1)
+
+regr = LinearRegression()
+mse = []
+
+# Calculate MSE with only the intercept
+score = -1*model_selection.cross_val_score(regr,
+           np.ones((len(X_reduced),1)), y, cv=cv,
+           scoring='neg_mean_squared_error').mean()    
+mse.append(score)
+
+# Calculate MSE using cross-validation, adding one component at a time
+for i in np.arange(1, 6):
+    score = -1*model_selection.cross_val_score(regr,
+               X_reduced[:,:i], y, cv=cv, scoring='neg_mean_squared_error').mean()
+    mse.append(score)
+    
+# Plot cross-validation results    
+plt.plot(mse)
+plt.xlabel('Number of Principal Components')
+plt.ylabel('MSE')
+plt.title('moral judgment')
+
+''''
+Weird results for the crossval !
+from internet: 
+From the plot we can see that the test MSE decreases by adding in two principal components, yet it begins to increase as we add more than two principal components.
+
+Thus, the optimal model includes just the first two principal components.--> copy from website
+'''
+
+
+#calculate the percentage of variance in the response variable explained 
+#by adding in each principal component to the model:
+np.cumsum(np.round(pca.explained_variance_ratio_, decimals=4)*100)
+'''([ 41.2 ,  49.97,  55.92,  61.37,  66.04,  70.12,  73.35,  76.39,
+        79.22,  81.72,  84.  ,  86.08,  88.01,  89.55,  91.01,  92.33,
+        93.56,  94.71,  95.76,  96.77,  97.62,  98.38,  99.06,  99.64,
+       100.  ])'''
+
+'''By using just the first principal component, we can explain 41.2% of the variation in the response variable.
+    By adding in the second principal component, we can explain 49.97% of the variation in the response variable.
+--> use 11 components, untill we reach 84% explained variance
+
+'''
+
+
+#split the original dataset into a training and testing set and 
+#use the PCR model with two principal components to make predictions on the testing set.
+
+
+#split the dataset into training (70%) and testing (30%) sets (2nd split)
+X_train,X_test,y_train,y_test = train_test_split(X,y,test_size=0.3,random_state=0) 
+
+#scale the training and testing data
+X_reduced_train = pca.fit_transform(scale(X_train))
+X_reduced_test = pca.transform(scale(X_test))[:,:1]
+
+#train PCR model on training data 
+regr = LinearRegression()
+regr.fit(X_reduced_train[:,:1], y_train)
+
+#calculate RMSE
+pred = regr.predict(X_reduced_test)
+np.sqrt(mean_squared_error(y_test, pred))
+'''
+We can see that the test RMSE turns out to be 0.947122. 
+This is the average deviation between the predicted value for moral_judgment
+ and the observed value for moral judgment for the observations in the testing set.
 
 
 
